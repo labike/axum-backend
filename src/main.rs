@@ -13,6 +13,8 @@ mod error;
 mod db;
 mod util;
 mod middleware;
+mod mail;
+mod handler;
 
 
 

@@ -113,3 +113,9 @@ impl fmt::Display for HttpError {
 impl std::error::Error for HttpError {
     
 }
+
+impl IntoResponse for HttpError {
+    fn into_response(self) -> Response {
+        self.into_http_response()
+    }
+}

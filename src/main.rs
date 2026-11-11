@@ -6,6 +6,8 @@ use tracing_subscriber::filter::LevelFilter;
 use config::Config;
 use db::DBClient;
 
+use crate::routes::create_router;
+
 mod models;
 mod config;
 mod dto;
@@ -15,7 +17,7 @@ mod util;
 mod middleware;
 mod mail;
 mod handler;
-
+mod routes;
 
 
 #[derive(Debug, Clone)]
@@ -59,7 +61,8 @@ async fn main() {
         db_client,
     };
 
-    let app = Router::new().layer(Extension(app_state)).layer(cors.clone());
+    // let app = Router::new().layer(Extension(app_state)).layer(cors.clone());
+    let app = create_router(Arc::bew(app_state.clone())).layer(cors.clone());
     println!("server is running on http://localhost:{}", &config.port);
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", &config.port)).await.unwrap();

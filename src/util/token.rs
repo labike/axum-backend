@@ -1,6 +1,6 @@
 use axum::http::StatusCode;
 use chrono::{Duration, Utc};
-use jsonwebtoken::{DecodingKey, EncodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{ErrorMessage, HttpError};
@@ -8,7 +8,7 @@ use crate::error::{ErrorMessage, HttpError};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenClaims {
     pub sub: String,
-    pub iat: String,
+    pub iat: usize,
     pub exp: usize,
 }
 
@@ -24,6 +24,11 @@ pub fn create_token(
     let now = Utc::now();
     let iat = now.timestamp() as usize;
     let exp = (now + Duration::minutes(expires_in_seconds)).timestamp() as usize;
+    let claims = TokenClaims {
+        sub: user_id.to_string(),
+        iat,
+        exp,
+    };
 
     encode(&Header::default(), &claims, &EncodingKey::from_secret(secret))
 }

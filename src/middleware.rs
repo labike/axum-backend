@@ -1,8 +1,12 @@
-use axum::{extract::Request, http::{StatusCode, header}};
+use std::sync::Arc;
+
+use axum::{Extension, extract::Request, http::{StatusCode, header}, middleware::Next, response::IntoResponse};
 use axum_extra::extract::CookieJar;
 use serde::{Deserialize, Serialize};
 
-use crate::{error::{ErrorMessage, HttpError}, models::User, util::token};
+use crate::{AppState, error::{ErrorMessage, HttpError}, models::{User, UserRole}, util::token};
+
+use crate::db::UserExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JWTAuthMiddleware {
@@ -45,7 +49,7 @@ pub async fn auth(
 
     let user_id = uuid::Uuid::parse_str(&token_details.to_string()).map_err(|_| {
         HttpError::unauthorized(ErrorMessage::InvalidToken.to_string())
-    });
+    })?;
 
     let user = app_state.db_client.get_user(Some(user_id), None, None, None).await.map_err(|_| {
         HttpError::unauthorized(ErrorMessage::UserNotFound.to_string())
@@ -63,7 +67,7 @@ pub async fn auth(
 }
 
 pub async fn role_check(
-    Extension(app_state): Extension<Arc<AppState>>,
+    Extension(_app_state): Extension<Arc<AppState>>,
     req: Request,
     next: Next,
     required_role: Vec<UserRole>,

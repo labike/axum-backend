@@ -1,3 +1,8 @@
+use std::fmt;
+
+use axum::{Json, http::StatusCode, response::{IntoResponse, Response}};
+use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ErrorResponse {
     pub status: String,
@@ -6,7 +11,7 @@ pub struct ErrorResponse {
 
 impl fmt::Display for ErrorResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write(f, "{}", serde_json::to_string(&self).unwrap())
+        write!(f, "{}", serde_json::to_string(&self).unwrap())
     }
 }
 
@@ -23,6 +28,7 @@ pub enum ErrorMessage {
     TokenNotProvided,
     PermissionDenied,
     UserNotAuthorized,
+    InvalidHashFormat,
 }
 
 impl ToString for ErrorMessage {
@@ -56,11 +62,11 @@ impl ErrorMessage {
 #[derive(Debug, Clone)]
 pub struct HttpError {
     pub message: String,
-    pub status: StateCode,
+    pub status: StatusCode,
 }
 
 impl HttpError {
-    pub fn new(message: impl Into<String>, status: StateCode) -> Self {
+    pub fn new(message: impl Into<String>, status: StatusCode) -> Self {
         Self {
             message: message.into(),
             status,
@@ -70,28 +76,28 @@ impl HttpError {
     pub fn server_error(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
-            status: StateCode::INTERNAL_SERVER_ERROR,
+            status: StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
     pub fn bad_request(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
-            status: StateCode::BAD_REQUEST,
+            status: StatusCode::BAD_REQUEST,
         }
     }
 
     pub fn unique_constraint_violation(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
-            status: StateCode::CONFLICT,
+            status: StatusCode::CONFLICT,
         }
     }
 
     pub fn unauthorized(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
-            status: StateCode::UNAUTHORIZED,
+            status: StatusCode::UNAUTHORIZED,
         }
     }
 

@@ -1,6 +1,8 @@
-use axum::{Extension, http::{HeaderValue, header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE}}};
+use std::sync::Arc;
+
+use axum::{http::{HeaderValue, header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE}, Method}};
 use sqlx::postgres::PgPoolOptions;
-use tower_http::{classify::GrpcCode::Ok, cors::CorsLayer};
+use tower_http::{cors::CorsLayer};
 use tracing_subscriber::filter::LevelFilter;
 
 use config::Config;
@@ -23,14 +25,14 @@ mod routes;
 #[derive(Debug, Clone)]
 pub struct AppState {
     pub env: Config,
-    pub db_client: DbClient
+    pub db_client: DBClient,
 }
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt().with_max_level(LevelFilter::DEBUG).init();
 
-    dotenvy::dotenv()?;
+    dotenvy::dotenv();
 
     let config = Config::init();
 
@@ -53,16 +55,16 @@ async fn main() {
       .allow_origin("http://localhost:3333".parse::<HeaderValue>().unwrap())
       .allow_headers([AUTHORIZATION, ACCEPT, CONTENT_TYPE])
       .allow_credentials(true)
-      .allow_methods([METHOD::GET, METHOD::POST, METHOD::PUT]);
+      .allow_methods([Method::GET, Method::POST, Method::PUT]);
 
     let db_client = DBClient::new(pool);
     let app_state = AppState {
-        env: config,
+        env: config.clone(),
         db_client,
     };
 
     // let app = Router::new().layer(Extension(app_state)).layer(cors.clone());
-    let app = create_router(Arc::bew(app_state.clone())).layer(cors.clone());
+    let app = create_router(Arc::new(app_state.clone())).layer(cors.clone());
     println!("server is running on http://localhost:{}", &config.port);
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", &config.port)).await.unwrap();

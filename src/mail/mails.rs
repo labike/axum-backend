@@ -1,3 +1,5 @@
+use super::send_email::send_mail;
+
 pub async fn send_verification_email(
     to_email: &str,
     username: &str,
@@ -13,7 +15,7 @@ pub async fn send_verification_email(
         ("{{verification_link}}".to_string(), verification_link)
     ];
 
-    send_email(to_email, subject, template_path, &placeholders).await
+    send_mail(to_email, subject, template_path, &placeholders).await
 }
 
 fn create_verification_link(base_url: &str, token: &str) -> String {
@@ -30,7 +32,7 @@ pub async fn send_welcome_email(
         ("{{username}".to_string(), username.to_string()),
     ];
 
-    send_email(to_email, subject, template_path, &placeholders).await
+    send_mail(to_email, subject, template_path, &placeholders).await
 }
 
 pub async fn send_forgot_password_email(
@@ -45,5 +47,5 @@ pub async fn send_forgot_password_email(
         ("{{reset_link}}".to_string(), reset_link.to_string())
     ];
 
-    send_email(to_email, subject, template_path, &placeholders).await
+    send_mail(to_email, subject, template_path, &placeholders).await
 }

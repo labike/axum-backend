@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use axum::{Extension, Json, Router, extract::Query, http::{HeaderMap, header}, response::{IntoResponse, Redirect}, routing::{get, post}};
+use axum::{Extension, Json, Router, extract::Query, http::{HeaderMap, StatusCode, header}, response::{IntoResponse, Redirect}, routing::{get, post}};
 use axum_extra::extract::cookie::Cookie;
 use chrono::{Duration, Utc};
-use tower_http::classify::ServerErrorsFailureClass::StatusCode;
-use crate::{dto::Response, mail::mails::send_welcome_email};
+use validator::Validate;
+use crate::{db::UserExt, dto::Response, mail::mails::send_welcome_email};
 
 
 use crate::{AppState, dto::{ForgotPasswordRequestDto, LoginUserDto, RegisterUserDto, ResetPasswordRequestDto, UserLoginResponseDto, VerifyEmailQueryDto}, error::{ErrorMessage, HttpError}, mail::mails::{send_forgot_password_email, send_verification_email}, util::{password, token}};
@@ -30,7 +30,7 @@ pub async fn register(
     let verification_token = uuid::Uuid::new_v4().to_string();
     let expires_at = Utc::now() + Duration::hours(24);
     let hash_password = password::hash(&body.password)
-      .map_err(|e| HttpError::server_error(e.to_string()));
+      .map_err(|e| HttpError::server_error(e.to_string()))?;
     let result = app_state.db_client.save_user(
         &body.name,
         &body.email,
@@ -41,12 +41,12 @@ pub async fn register(
 
     match result {
         Ok(_user) => {
-            let send_email_result = send_verification_email(&body.email, &body.name, &verification_token);
+            let send_email_result = send_verification_email(&body.email, &body.name, &verification_token).await;
             if let Err(e) = send_email_result {
                 eprintln!("Fail to send verification email: {}", e);
             }
             Ok((StatusCode::CREATED, Json(Response {
-                status: &"success".to_string(),
+                status: "success",
                 message: "Register successfully!".to_string(),
             })))
         },
@@ -71,19 +71,19 @@ pub async fn login(
         |e| HttpError::server_error(e.to_string())
     )?;
 
-    let user = result.ok_err(HttpError::bad_request(ErrorMessage::WrongCredentials.to_string()))?;
+    let user = result.ok_or(HttpError::bad_request(ErrorMessage::WrongCredentials.to_string()))?;
     let password_matched = password::compare(&body.password, &user.password).map_err(
         |_| HttpError::bad_request(ErrorMessage::WrongCredentials.to_string())
     )?;
 
     if password_matched {
         let token = token::create_token(
-            &user.id,
+            &user.id.to_string(),
             &app_state.env.jwt_secret_key.as_bytes(),
-            app_state.env.jwt_expiration
+            app_state.env.jwt_expires,
         ).map_err(|e| HttpError::server_error(e.to_string()))?;
 
-        let cookie_duration = time::Duration::minutes(app_state.env.jwt_expiration * 60);
+        let cookie_duration = time::Duration::minutes(app_state.env.jwt_expires * 60);
         let cookie = Cookie::build(("token", token.clone()))
           .path("/")
           .max_age(cookie_duration)
@@ -102,7 +102,7 @@ pub async fn login(
 
         Ok(response)
     } else {
-        Err(HttpError::bad_request(ErrorMessage::WrongCredentials.to_string()));
+        Err(HttpError::bad_request(ErrorMessage::WrongCredentials.to_string()))
     }
 }
 
@@ -112,7 +112,7 @@ pub async fn verify_email(
 ) -> Result<impl IntoResponse, HttpError> {
     query_params.validate().map_err(|e| HttpError::bad_request(e.to_string()))?;
 
-    let result = app_state.db_client.get_user(None, None, None, Some(&query_params.token)).await?.map_err(
+    let result = app_state.db_client.get_user(None, None, None, Some(&query_params.token)).await.map_err(
         |e| HttpError::server_error(e.to_string())
     )?;
 
@@ -126,7 +126,7 @@ pub async fn verify_email(
         }
     }
 
-    app_state.db_client.verifed_token(&query_token.token).await.map_err(
+    app_state.db_client.verified_token(&query_params.token).await.map_err(
         |e| HttpError::server_error(e.to_string())
     )?;
 
@@ -140,7 +140,7 @@ pub async fn verify_email(
     }
 
     let token = token::create_token(
-        &user.id,
+        &user.id.to_string(),
         app_state.env.jwt_secret_key.as_bytes(),
         app_state.env.jwt_expires,
     ).map_err(|e| HttpError::server_error(e.to_string()))?;
@@ -170,7 +170,7 @@ pub async fn forgot_password(
 ) -> Result<impl IntoResponse, HttpError> {
     body.validate().map_err(|e| HttpError::bad_request(e.to_string()))?;
 
-    let result = app_state.db_client.get_user(None, None, Some(&body.email), Nome).await.map_err(
+    let result = app_state.db_client.get_user(None, None, Some(&body.email), None).await.map_err(
         |e| HttpError::server_error(e.to_string())
     )?;
 
@@ -180,7 +180,7 @@ pub async fn forgot_password(
 
     let user_id = uuid::Uuid::parse_str(&user.id.to_string()).unwrap();
 
-    app_state.dn_client().add_verifed_token(user_id, verification_token, expires_at).await.map_err(
+    app_state.db_client.add_verified_token(user_id, &verification_token, expires_at).await.map_err(
         |e| HttpError::server_error(e.to_string())
     )?;
 
@@ -189,11 +189,11 @@ pub async fn forgot_password(
         &user.email,
         &reset_link,
         &user.name
-    );
+    ).await;
 
     if let Err(e) = email_sent {
         eprintln!("Failed to email forgot password email: {}", e);
-        return HttpError::server_error("Failed to send email".to_string());
+        return Err(HttpError::server_error("Failed to send email".to_string()));
     }
 
     let response = Response {
@@ -210,7 +210,7 @@ pub async fn reset_password(
 ) -> Result<impl IntoResponse, HttpError> {
     body.validate().map_err(|e| HttpError::bad_request(e.to_string()))?;
 
-    let result = app_state.db_client.get_user(None, None, Some(&body.token), Nome).await.map_err(
+    let result = app_state.db_client.get_user(None, None, Some(&body.token), None).await.map_err(
         |e| HttpError::server_error(e.to_string())
     )?;
 
@@ -225,7 +225,7 @@ pub async fn reset_password(
     }
 
     let user_id = uuid::Uuid::parse_str(&user.id.to_string()).unwrap();
-    let hash_password = password::hash(&body.password).map_err(
+    let hash_password = password::hash(&body.new_password).map_err(
         |e| HttpError::server_error(e.to_string())
     )?;
 

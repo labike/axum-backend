@@ -19,7 +19,7 @@ pub async fn send_mail(
     let smtp_server = env::var("SMTP_SERVER")?;
     let smtp_port: u16 = env::var("SMTP_PORT")?.parse()?;
 
-    let mut html_template = fs::read_to_string(template_path);
+    let mut html_template = fs::read_to_string(template_path)?;
     for (key, value) in placeholders {
         html_template = html_template.replace(key, value)
     }

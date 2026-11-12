@@ -1,3 +1,9 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use validator::Validate;
+
+use crate::models::{User, UserRole};
+
 // 提交给服务器的数据结构
 #[derive(Validate, Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RegisterUserDto {
@@ -59,6 +65,14 @@ impl FilterUserDto {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct RequestQueryDto {
+    #[validate(range(min = 1))]
+    pub page: Option<usize>,
+    #[validate(range(min = 1, max = 50))]
+    pub limit: Option<usize>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserData {
     pub user: FilterUserDto,
@@ -95,9 +109,9 @@ pub struct NameUpdateDto {
     pub name: String,
 }
 
-#[derive(Validate, Debug, Serialize, Deserialize, Default, Clone)]
+#[derive(Validate, Debug, Serialize, Deserialize, Clone)]
 pub struct RoleUpdateDto {
-    #[validate(custom = "用户角色")]
+    #[validate(custom(function = "validate_user_role"))]
     pub role: UserRole,
 }
 
